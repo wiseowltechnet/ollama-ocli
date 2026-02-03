@@ -160,7 +160,12 @@ async fn execute_bash_command(call: &ToolCall) -> ToolResult {
         Ok(out) => {
             let stdout = String::from_utf8_lossy(&out.stdout);
             let stderr = String::from_utf8_lossy(&out.stderr);
-            let result = format!("Exit: {}\nStdout: {}\nStderr: {}", out.status.code().unwrap_or(-1), stdout, stderr);
+            let result = format!(
+                "Exit: {}\nStdout: {}\nStderr: {}",
+                out.status.code().unwrap_or(-1),
+                stdout,
+                stderr
+            );
             ToolResult::Success(result)
         }
         Err(e) => ToolResult::Error(format!("Failed to execute: {}", e)),
@@ -173,7 +178,11 @@ async fn execute_search_files(call: &ToolCall) -> ToolResult {
         None => return ToolResult::Error("Missing 'pattern' parameter".to_string()),
     };
 
-    let directory = call.parameters.get("directory").and_then(|v| v.as_str()).unwrap_or(".");
+    let directory = call
+        .parameters
+        .get("directory")
+        .and_then(|v| v.as_str())
+        .unwrap_or(".");
 
     let output = Command::new("find")
         .arg(directory)
@@ -212,7 +221,7 @@ async fn execute_list_directory(call: &ToolCall) -> ToolResult {
 
 pub fn parse_tool_calls(text: &str) -> Vec<ToolCall> {
     let mut calls = Vec::new();
-    
+
     // Look for tool calls in format: <tool_call>{tool:name,parameters:{...}}</tool_call>
     let mut start = 0;
     while let Some(begin) = text[start..].find("<tool_call>") {
@@ -227,27 +236,34 @@ pub fn parse_tool_calls(text: &str) -> Vec<ToolCall> {
             break;
         }
     }
-    
+
     calls
 }
 
 pub fn tools_to_prompt() -> String {
     let tools = get_available_tools();
     let mut prompt = String::from("You have access to these tools:\n\n");
-    
+
     for tool in tools {
         prompt.push_str(&format!("Tool: {}\n", tool.name));
         prompt.push_str(&format!("Description: {}\n", tool.description));
         prompt.push_str("Parameters:\n");
         for param in tool.parameters {
-            let req = if param.required { "required" } else { "optional" };
-            prompt.push_str(&format!("  - {} ({}): {} [{}]\n", param.name, param.param_type, param.description, req));
+            let req = if param.required {
+                "required"
+            } else {
+                "optional"
+            };
+            prompt.push_str(&format!(
+                "  - {} ({}): {} [{}]\n",
+                param.name, param.param_type, param.description, req
+            ));
         }
         prompt.push_str("\n");
     }
-    
+
     prompt.push_str("To use a tool, output: <tool_call>{\"tool\":\"tool_name\",\"parameters\":{...}}</tool_call>\n");
     prompt.push_str("You can call multiple tools in sequence.\n\n");
-    
+
     prompt
 }

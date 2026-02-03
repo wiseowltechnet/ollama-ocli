@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
-use std::process::{Command, Stdio};
 use std::io::{BufRead, BufReader, Write};
+use std::process::{Command, Stdio};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MCPServer {
@@ -46,8 +46,10 @@ impl MCPClient {
     }
 
     pub async fn load_config(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let config_path = std::env::current_dir()?.join(".ocli").join("mcp_servers.json");
-        
+        let config_path = std::env::current_dir()?
+            .join(".ocli")
+            .join("mcp_servers.json");
+
         if !config_path.exists() {
             // Create default config
             let default_config = serde_json::json!({
@@ -60,7 +62,7 @@ impl MCPClient {
 
         let content = tokio::fs::read_to_string(&config_path).await?;
         let config: serde_json::Value = serde_json::from_str(&content)?;
-        
+
         if let Some(servers) = config.get("servers").and_then(|s| s.as_array()) {
             for server in servers {
                 if let Ok(mcp_server) = serde_json::from_value::<MCPServer>(server.clone()) {
@@ -78,8 +80,16 @@ impl MCPClient {
                 Ok(tools) => {
                     for tool in tools {
                         self.tools.push(MCPTool {
-                            name: tool.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string(),
-                            description: tool.get("description").and_then(|d| d.as_str()).unwrap_or("").to_string(),
+                            name: tool
+                                .get("name")
+                                .and_then(|n| n.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                            description: tool
+                                .get("description")
+                                .and_then(|d| d.as_str())
+                                .unwrap_or("")
+                                .to_string(),
                             server: server.name.clone(),
                         });
                     }
@@ -90,8 +100,14 @@ impl MCPClient {
         Ok(())
     }
 
-    async fn list_tools(&self, server_name: &str) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
-        let server = self.servers.iter().find(|s| s.name == server_name)
+    async fn list_tools(
+        &self,
+        server_name: &str,
+    ) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
+        let server = self
+            .servers
+            .iter()
+            .find(|s| s.name == server_name)
             .ok_or("Server not found")?;
 
         let request = MCPRequest {
@@ -102,7 +118,7 @@ impl MCPClient {
         };
 
         let response = self.send_request(server, &request).await?;
-        
+
         if let Some(result) = response.result {
             if let Some(tools) = result.get("tools").and_then(|t| t.as_array()) {
                 return Ok(tools.clone());
@@ -112,7 +128,11 @@ impl MCPClient {
         Ok(Vec::new())
     }
 
-    async fn send_request(&self, server: &MCPServer, request: &MCPRequest) -> Result<MCPResponse, Box<dyn std::error::Error>> {
+    async fn send_request(
+        &self,
+        server: &MCPServer,
+        request: &MCPRequest,
+    ) -> Result<MCPResponse, Box<dyn std::error::Error>> {
         let mut child = Command::new(&server.command)
             .args(&server.args)
             .stdin(Stdio::piped())
@@ -127,7 +147,7 @@ impl MCPClient {
 
         let stdout = child.stdout.take().ok_or("Failed to open stdout")?;
         let reader = BufReader::new(stdout);
-        
+
         for line in reader.lines() {
             let line = line?;
             if let Ok(response) = serde_json::from_str::<MCPResponse>(&line) {
@@ -142,11 +162,21 @@ impl MCPClient {
         self.tools.iter().collect()
     }
 
-    pub async fn call_tool(&self, tool_name: &str, params: serde_json::Value) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-        let tool = self.tools.iter().find(|t| t.name == tool_name)
+    pub async fn call_tool(
+        &self,
+        tool_name: &str,
+        params: serde_json::Value,
+    ) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+        let tool = self
+            .tools
+            .iter()
+            .find(|t| t.name == tool_name)
             .ok_or("Tool not found")?;
 
-        let server = self.servers.iter().find(|s| s.name == tool.server)
+        let server = self
+            .servers
+            .iter()
+            .find(|s| s.name == tool.server)
             .ok_or("Server not found")?;
 
         let request = MCPRequest {
@@ -160,7 +190,7 @@ impl MCPClient {
         };
 
         let response = self.send_request(server, &request).await?;
-        
+
         if let Some(result) = response.result {
             return Ok(result);
         }
@@ -174,16 +204,21 @@ impl MCPClient {
 }
 
 impl MCPClient {
-    pub async fn call_tool_streaming<F>(&self, tool_name: &str, params: serde_json::Value, mut callback: F) -> Result<serde_json::Value, Box<dyn std::error::Error>>
+    pub async fn call_tool_streaming<F>(
+        &self,
+        tool_name: &str,
+        params: serde_json::Value,
+        mut callback: F,
+    ) -> Result<serde_json::Value, Box<dyn std::error::Error>>
     where
         F: FnMut(&str),
     {
         callback(&format!("⏳ Calling MCP tool: {}\n", tool_name));
-        
+
         let result = self.call_tool(tool_name, params).await?;
-        
+
         callback(&format!("✅ Tool completed\n"));
-        
+
         Ok(result)
     }
 }

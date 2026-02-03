@@ -19,27 +19,34 @@ impl Plan {
     pub fn new(goal: String, steps: Vec<String>) -> Self {
         Self {
             goal,
-            steps: steps.into_iter().enumerate().map(|(i, desc)| PlanStep {
-                number: i + 1,
-                description: desc,
-                completed: false,
-                result: None,
-            }).collect(),
+            steps: steps
+                .into_iter()
+                .enumerate()
+                .map(|(i, desc)| PlanStep {
+                    number: i + 1,
+                    description: desc,
+                    completed: false,
+                    result: None,
+                })
+                .collect(),
             created_at: chrono::Utc::now().to_rfc3339(),
         }
     }
 
     pub fn display(&self) -> String {
         let mut output = format!("📋 Plan: {}\n\n", self.goal);
-        
+
         for step in &self.steps {
             let status = if step.completed { "✅" } else { "⬜" };
-            output.push_str(&format!("{}. {} {}\n", step.number, status, step.description));
+            output.push_str(&format!(
+                "{}. {} {}\n",
+                step.number, status, step.description
+            ));
             if let Some(result) = &step.result {
                 output.push_str(&format!("   → {}\n", result));
             }
         }
-        
+
         output
     }
 
@@ -61,11 +68,11 @@ impl Plan {
     pub async fn save(&self, session: &str) -> Result<(), Box<dyn std::error::Error>> {
         let plan_dir = std::env::current_dir()?.join(".ocli").join("plans");
         tokio::fs::create_dir_all(&plan_dir).await?;
-        
+
         let plan_file = plan_dir.join(format!("{}.json", session));
         let json = serde_json::to_string_pretty(self)?;
         tokio::fs::write(plan_file, json).await?;
-        
+
         Ok(())
     }
 
@@ -74,11 +81,11 @@ impl Plan {
             .join(".ocli")
             .join("plans")
             .join(format!("{}.json", session));
-        
+
         if !plan_file.exists() {
             return Ok(None);
         }
-        
+
         let content = tokio::fs::read_to_string(plan_file).await?;
         let plan = serde_json::from_str(&content)?;
         Ok(Some(plan))

@@ -8,7 +8,7 @@ impl GitHelper {
             .args(&["status", "--short"])
             .output()
             .map_err(|e| format!("Git error: {}", e))?;
-        
+
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
     }
 
@@ -17,7 +17,7 @@ impl GitHelper {
             .args(&["diff"])
             .output()
             .map_err(|e| format!("Git error: {}", e))?;
-        
+
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
     }
 
@@ -26,7 +26,7 @@ impl GitHelper {
             .args(&["commit", "-am", message])
             .output()
             .map_err(|e| format!("Git error: {}", e))?;
-        
+
         if output.status.success() {
             Ok(String::from_utf8_lossy(&output.stdout).to_string())
         } else {
@@ -39,7 +39,7 @@ impl GitHelper {
             .args(&["log", &format!("-{}", count), "--oneline"])
             .output()
             .map_err(|e| format!("Git error: {}", e))?;
-        
+
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
     }
 }

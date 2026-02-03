@@ -1,4 +1,4 @@
-use crate::tools::{execute_tool, parse_tool_calls, ToolResult};
+use crate::tools::{ToolResult, execute_tool, parse_tool_calls};
 use futures_util::StreamExt;
 use reqwest::Client;
 use serde_json::Value;
@@ -11,7 +11,7 @@ pub async fn stream_with_tools(
 ) -> Result<String, Box<dyn std::error::Error>> {
     let mut full_response = String::new();
     let mut buffer = String::new();
-    
+
     let response = client
         .post("http://localhost:11434/api/generate")
         .json(&serde_json::json!({
@@ -41,7 +41,7 @@ pub async fn stream_with_tools(
                     if let Some(response_text) = json.get("response").and_then(|r| r.as_str()) {
                         buffer.push_str(response_text);
                         full_response.push_str(response_text);
-                        
+
                         // Check for complete tool calls
                         let tool_calls = parse_tool_calls(&buffer);
                         if !tool_calls.is_empty() {
@@ -50,7 +50,10 @@ pub async fn stream_with_tools(
                                 println!("🔧 Executing: {}", call.tool);
                                 match execute_tool(&call).await {
                                     ToolResult::Success(result) => {
-                                        println!("✅ Result: {}", result.lines().take(5).collect::<Vec<_>>().join("\n"));
+                                        println!(
+                                            "✅ Result: {}",
+                                            result.lines().take(5).collect::<Vec<_>>().join("\n")
+                                        );
                                     }
                                     ToolResult::Error(err) => {
                                         println!("❌ Error: {}", err);

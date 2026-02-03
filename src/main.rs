@@ -1,28 +1,28 @@
+mod context;
 mod errors;
-mod mcp;
-mod tui;
-mod lcars;
 mod git;
-mod stats;
-mod wiseowl;
+mod lcars;
+mod mcp;
+mod multi_file;
 mod planning;
 mod prompts;
-mod tools;
-mod context;
+mod stats;
 mod streaming;
-mod multi_file;
+mod tools;
+mod tui;
+mod wiseowl;
 
 use clap::{Parser, Subcommand};
+use context::{ConversationContext, FileChange};
+use futures_util::StreamExt;
+use multi_file::{EditOperation, FileEdit, MultiFileEditor};
+use planning::Plan;
+use prompts::{get_system_prompt, get_system_prompt_with_mcp};
 use reqwest::Client;
 use serde_json::Value;
 use std::io::{self, Write};
 use std::path::Path;
-use futures_util::StreamExt;
-use context::{ConversationContext, FileChange};
-use planning::Plan;
-use multi_file::{MultiFileEditor, FileEdit, EditOperation};
 use streaming::stream_with_tools;
-use prompts::{get_system_prompt, get_system_prompt_with_mcp};
 
 #[derive(Parser)]
 #[command(name = "ocli")]
@@ -30,7 +30,7 @@ use prompts::{get_system_prompt, get_system_prompt_with_mcp};
 struct Args {
     #[arg(short, long, default_value = "deepseek-coder:6.7b")]
     model: String,
-    
+
     #[arg(short = 'V', long)]
     version: bool,
 
@@ -54,8 +54,11 @@ enum Commands {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     let client = Client::new();
-    if args.version { println!("🦉 OCLI v0.2.0"); return Ok(()); }
-    
+    if args.version {
+        println!("🦉 OCLI v0.2.0");
+        return Ok(());
+    }
+
     match args.command {
         Some(Commands::Plan { goal }) => {
             plan_mode(&client, &args.model, &goal).await?;
@@ -70,79 +73,101 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             chat_mode(&client, &args.model, None).await?;
         }
     }
-    
+
     Ok(())
 }
 
-async fn chat_mode(client: &Client, model: &str, session: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+async fn chat_mode(
+    client: &Client,
+    model: &str,
+    session: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let owl = crate::wiseowl::WiseOwl::init().await?;
     let session_name = session.unwrap_or("default");
     let mut context = ConversationContext::load(session_name).await?;
     let mut editor = MultiFileEditor::new();
-    
+
     println!("{}", crate::lcars::header());
-    println!("{}", crate::lcars::status_bar(&format!("Model: {}", model), &format!("Session: {}", session_name)));
+    println!(
+        "{}",
+        crate::lcars::status_bar(
+            &format!("Model: {}", model),
+            &format!("Session: {}", session_name)
+        )
+    );
     println!("Type 'exit' or Ctrl+C to end");
     // Show startup banner
     let mut mcp_client = crate::mcp::MCPClient::new();
-    let mcp_count = if mcp_client.load_config().await.is_ok() && mcp_client.discover_tools().await.is_ok() {
-        mcp_client.list_available_tools().len()
-    } else { 0 };
-    
+    let mcp_count =
+        if mcp_client.load_config().await.is_ok() && mcp_client.discover_tools().await.is_ok() {
+            mcp_client.list_available_tools().len()
+        } else {
+            0
+        };
+
     if mcp_count > 0 {
         println!("🔌 {} MCP tools available", mcp_count);
     }
     println!("💡 Use /help for commands");
     println!("💡 Use /help for commands\n");
-    
+
     if !context.messages.is_empty() {
         println!("📜 Loaded {} messages", context.messages.len());
     }
-    
+
     loop {
         print!("You: ");
         io::stdout().flush()?;
-        
+
         let mut input = String::new();
         match io::stdin().read_line(&mut input) {
             Ok(0) => break,
-            Ok(_) => {},
+            Ok(_) => {}
             Err(_) => break,
         }
-        
+
         let input = input.trim();
-        
-        if input.is_empty() { continue; }
+
+        if input.is_empty() {
+            continue;
+        }
         if matches!(input.to_lowercase().as_str(), "exit" | "quit" | "q") {
             context.save(session_name).await?;
             println!("💾 Session saved. Goodbye!");
             break;
         }
-        
+
         if input.starts_with('/') {
             if !handle_slash_command(&owl, client, model, input, &mut context, &mut editor).await? {
                 break;
             }
             continue;
         }
-        
+
         context.add_message("user".to_string(), input.to_string());
-        
-        let system_prompt = format!("{}\n{}", get_system_prompt_with_mcp().await.unwrap_or_else(|_| get_system_prompt()), context.get_context_summary());
+
+        let system_prompt = format!(
+            "{}\n{}",
+            get_system_prompt_with_mcp()
+                .await
+                .unwrap_or_else(|_| get_system_prompt()),
+            context.get_context_summary()
+        );
         let full_prompt = format!("{}\n\nUser: {}", system_prompt, input);
-        
+
         let response = stream_with_tools(client, model, &full_prompt).await?;
         context.add_message("assistant".to_string(), response);
-        
+
         if context.messages.len() % 5 == 0 {
             context.save(session_name).await?;
         }
     }
-    
+
     Ok(())
 }
 
-async fn handle_slash_command(owl: &crate::wiseowl::WiseOwl, 
+async fn handle_slash_command(
+    owl: &crate::wiseowl::WiseOwl,
     client: &Client,
     model: &str,
     input: &str,
@@ -150,14 +175,25 @@ async fn handle_slash_command(owl: &crate::wiseowl::WiseOwl,
     editor: &mut MultiFileEditor,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     let parts: Vec<&str> = input[1..].split_whitespace().collect();
-    if parts.is_empty() { return Ok(true); }
-    
+    if parts.is_empty() {
+        return Ok(true);
+    }
+
     match parts[0] {
         "help" => {
             use crate::lcars::*;
-            println!("{}╔═══════════════════════════════════════════════════════════════╗{}", ORANGE, RESET);
-            println!("{}║  {}OCLI COMMANDS{}                                                  {}║{}", ORANGE, BLUE, ORANGE, ORANGE, RESET);
-            println!("{}╚═══════════════════════════════════════════════════════════════╝{}", ORANGE, RESET);
+            println!(
+                "{}╔═══════════════════════════════════════════════════════════════╗{}",
+                ORANGE, RESET
+            );
+            println!(
+                "{}║  {}OCLI COMMANDS{}                                                  {}║{}",
+                ORANGE, BLUE, ORANGE, ORANGE, RESET
+            );
+            println!(
+                "{}╚═══════════════════════════════════════════════════════════════╝{}",
+                ORANGE, RESET
+            );
             println!("");
             println!("{}📋 Planning{}", PURPLE, RESET);
             println!("  /plan /next /show-plan");
@@ -174,7 +210,7 @@ async fn handle_slash_command(owl: &crate::wiseowl::WiseOwl,
             println!("{}ℹ️  Other{}", PURPLE, RESET);
             println!("  /help /version /clear /exit");
         }
-        
+
         "read" => {
             if parts.len() < 2 {
                 println!("❌ Usage: /read <file>");
@@ -189,7 +225,7 @@ async fn handle_slash_command(owl: &crate::wiseowl::WiseOwl,
                 Err(e) => println!("❌ Error: {}", e),
             }
         }
-        
+
         "write" => {
             if parts.len() < 2 {
                 println!("❌ Usage: /write <file>");
@@ -199,24 +235,32 @@ async fn handle_slash_command(owl: &crate::wiseowl::WiseOwl,
             println!("What should I write to {}?", path);
             print!("You: ");
             io::stdout().flush()?;
-            
+
             let mut request = String::new();
             io::stdin().read_line(&mut request)?;
-            
-            let prompt = format!("{}\n\nWrite content for file '{}' based on: {}\n\nProvide ONLY the file content.", 
-                get_system_prompt(), path, request.trim());
-            
+
+            let prompt = format!(
+                "{}\n\nWrite content for file '{}' based on: {}\n\nProvide ONLY the file content.",
+                get_system_prompt(),
+                path,
+                request.trim()
+            );
+
             let content = get_complete_response(client, model, &prompt).await?;
-            
+
             editor.add_edit(FileEdit {
                 path: path.to_string(),
                 content,
-                operation: if Path::new(path).exists() { EditOperation::Modify } else { EditOperation::Create },
+                operation: if Path::new(path).exists() {
+                    EditOperation::Modify
+                } else {
+                    EditOperation::Create
+                },
             });
-            
+
             println!("✅ Added to pending changes. Use /preview to review, /apply to save.");
         }
-        
+
         "preview" => {
             if editor.has_pending() {
                 println!("{}", editor.show_preview());
@@ -224,20 +268,20 @@ async fn handle_slash_command(owl: &crate::wiseowl::WiseOwl,
                 println!("📭 No pending changes");
             }
         }
-        
+
         "apply" => {
             if !editor.has_pending() {
                 println!("📭 No pending changes");
                 return Ok(true);
             }
-            
+
             println!("{}", editor.show_preview());
             print!("\nApply these changes? (y/N): ");
             io::stdout().flush()?;
-            
+
             let mut confirm = String::new();
             io::stdin().read_line(&mut confirm)?;
-            
+
             if confirm.trim().to_lowercase() == "y" {
                 match editor.apply_all().await {
                     Ok(results) => {
@@ -257,74 +301,93 @@ async fn handle_slash_command(owl: &crate::wiseowl::WiseOwl,
                 println!("❌ Cancelled");
             }
         }
-        
-        "rollback" => {
-            match context.rollback_last_change().await {
-                Ok(msg) => println!("✅ {}", msg),
-                Err(e) => println!("❌ Error: {}", e),
-            }
-        }
-        
+
+        "rollback" => match context.rollback_last_change().await {
+            Ok(msg) => println!("✅ {}", msg),
+            Err(e) => println!("❌ Error: {}", e),
+        },
+
         "clear" => {
             *context = ConversationContext::new();
             editor.clear();
             println!("🗑️  Context cleared");
         }
-        
+
         "plan" => {
             if parts.len() < 2 {
                 println!("❌ Usage: /plan <goal>");
-            println!("/todo <task> - Add to TODO list");
-            println!("/done <task> - Mark task complete");
-            println!("/rule <rule> - Add project rule");
-            println!("/context - Show wiseowl context");
-            println!("/version - Show version");
+                println!("/todo <task> - Add to TODO list");
+                println!("/done <task> - Mark task complete");
+                println!("/rule <rule> - Add project rule");
+                println!("/context - Show wiseowl context");
+                println!("/version - Show version");
                 return Ok(true);
             }
             let goal = parts[1..].join(" ");
             println!("🎯 Creating plan: {}", goal);
-    println!("⏳ This may take 30-60 seconds...");
-            
-            let prompt = format!("Create a detailed step-by-step plan to: {}
+            println!("⏳ This may take 30-60 seconds...");
 
-Provide 5-10 concrete steps as a numbered list.", goal);
+            let prompt = format!(
+                "Create a detailed step-by-step plan to: {}
+
+Provide 5-10 concrete steps as a numbered list.",
+                goal
+            );
             let response = get_complete_response(client, model, &prompt).await?;
-            
-            let steps: Vec<String> = response.lines()
+
+            let steps: Vec<String> = response
+                .lines()
                 .filter(|line| line.trim().chars().next().map_or(false, |c| c.is_numeric()))
-                .map(|line| line.split_once(".").map(|(_, rest)| rest.trim().to_string()).unwrap_or_else(|| line.trim().to_string()))
+                .map(|line| {
+                    line.split_once(".")
+                        .map(|(_, rest)| rest.trim().to_string())
+                        .unwrap_or_else(|| line.trim().to_string())
+                })
                 .collect();
-            
+
             if !steps.is_empty() {
                 let plan = crate::planning::Plan::new(goal, steps);
-                println!("
-{}", plan.display());
+                println!(
+                    "
+{}",
+                    plan.display()
+                );
                 plan.save("current").await?;
                 println!("💾 Plan saved. Use /next to execute steps.");
             }
         }
-        
+
         "next" => {
             if let Some(mut plan) = crate::planning::Plan::load("current").await? {
                 if let Some(step) = plan.next_step() {
                     println!("📍 Step {}: {}", step.number, step.description);
-                    println!("
-Executing...");
-                    
-                    let prompt = format!("Execute this step: {}
+                    println!(
+                        "
+Executing..."
+                    );
 
-Use tools as needed and provide the result.", step.description);
-                    let response = crate::streaming::stream_with_tools(client, model, &prompt).await?;
-                    
+                    let prompt = format!(
+                        "Execute this step: {}
+
+Use tools as needed and provide the result.",
+                        step.description
+                    );
+                    let response =
+                        crate::streaming::stream_with_tools(client, model, &prompt).await?;
+
                     plan.complete_step(step.number, "Completed".to_string());
                     plan.save("current").await?;
-                    
+
                     if plan.is_complete() {
-                        println!("
-🎉 Plan complete!");
+                        println!(
+                            "
+🎉 Plan complete!"
+                        );
                     } else {
-                        println!("
-✅ Step complete. Use /next for next step.");
+                        println!(
+                            "
+✅ Step complete. Use /next for next step."
+                        );
                     }
                 } else {
                     println!("✅ All steps completed!");
@@ -333,7 +396,7 @@ Use tools as needed and provide the result.", step.description);
                 println!("❌ No active plan. Use /plan to create one.");
             }
         }
-        
+
         "todo" => {
             if parts.len() < 2 {
                 println!("❌ Usage: /todo <task>");
@@ -343,7 +406,7 @@ Use tools as needed and provide the result.", step.description);
             owl.add_todo(&task).await?;
             println!("✅ Added to TODO");
         }
-        
+
         "done" => {
             if parts.len() < 2 {
                 println!("❌ Usage: /done <task>");
@@ -353,7 +416,7 @@ Use tools as needed and provide the result.", step.description);
             owl.complete_todo(&task).await?;
             println!("✅ Marked as done");
         }
-        
+
         "rule" => {
             if parts.len() < 2 {
                 println!("❌ Usage: /rule <rule>");
@@ -363,34 +426,37 @@ Use tools as needed and provide the result.", step.description);
             owl.add_rule(&rule).await?;
             println!("✅ Added to RULES");
         }
-        
+
         "git" => {
             if parts.len() < 2 {
                 println!("Usage: /git <status|diff|log|commit>");
                 return Ok(true);
             }
             match parts[1] {
-                "status" => {
-                    match crate::git::GitHelper::status() {
-                        Ok(s) => println!("📊 Git Status:
-{}", s),
-                        Err(e) => println!("❌ {}", e),
-                    }
-                }
-                "diff" => {
-                    match crate::git::GitHelper::diff() {
-                        Ok(d) => println!("📝 Git Diff:
-{}", d),
-                        Err(e) => println!("❌ {}", e),
-                    }
-                }
-                "log" => {
-                    match crate::git::GitHelper::log(10) {
-                        Ok(l) => println!("📜 Git Log:
-{}", l),
-                        Err(e) => println!("❌ {}", e),
-                    }
-                }
+                "status" => match crate::git::GitHelper::status() {
+                    Ok(s) => println!(
+                        "📊 Git Status:
+{}",
+                        s
+                    ),
+                    Err(e) => println!("❌ {}", e),
+                },
+                "diff" => match crate::git::GitHelper::diff() {
+                    Ok(d) => println!(
+                        "📝 Git Diff:
+{}",
+                        d
+                    ),
+                    Err(e) => println!("❌ {}", e),
+                },
+                "log" => match crate::git::GitHelper::log(10) {
+                    Ok(l) => println!(
+                        "📜 Git Log:
+{}",
+                        l
+                    ),
+                    Err(e) => println!("❌ {}", e),
+                },
                 "commit" => {
                     if parts.len() < 3 {
                         println!("Usage: /git commit <message>");
@@ -405,24 +471,24 @@ Use tools as needed and provide the result.", step.description);
                 _ => println!("Unknown git command"),
             }
         }
-        
+
         "stats" => {
             let stats = crate::stats::SessionStats::new();
             println!("{}", stats.display());
         }
-        
+
         "mcp" => {
             if parts.len() < 2 {
                 println!("Usage: /mcp <list|call>");
                 return Ok(true);
             }
-            
+
             match parts[1] {
                 "list" => {
                     let mut mcp_client = crate::mcp::MCPClient::new();
                     mcp_client.load_config().await?;
                     mcp_client.discover_tools().await?;
-                    
+
                     let tools = mcp_client.list_available_tools();
                     if tools.is_empty() {
                         println!("No MCP tools available. Add servers to .ocli/mcp_servers.json");
@@ -438,18 +504,18 @@ Use tools as needed and provide the result.", step.description);
                         println!("Usage: /mcp call <tool_name> [params]");
                         return Ok(true);
                     }
-                    
+
                     let mut mcp_client = crate::mcp::MCPClient::new();
                     mcp_client.load_config().await?;
                     mcp_client.discover_tools().await?;
-                    
+
                     let tool_name = parts[2];
                     let params = if parts.len() > 3 {
                         serde_json::json!({"input": parts[3..].join(" ")})
                     } else {
                         serde_json::json!({})
                     };
-                    
+
                     match mcp_client.call_tool(tool_name, params).await {
                         Ok(result) => println!("✅ Result: {:?}", result),
                         Err(e) => println!("❌ Error: {}", e),
@@ -458,23 +524,43 @@ Use tools as needed and provide the result.", step.description);
                 _ => println!("Unknown mcp command"),
             }
         }
-        
+
         "monitor" => {
             use crossterm::event::{self, Event, KeyCode};
             use std::time::Duration;
-            
+
             crate::tui::TUI::init()?;
             crate::tui::TUI::clear()?;
-            
+
             loop {
                 crate::tui::TUI::draw_header("OCLI MONITOR")?;
-                crate::tui::TUI::print_at(2, 3, "Session Statistics", crossterm::style::Color::Cyan)?;
-                crate::tui::TUI::print_at(4, 5, &format!("Messages: {}", context.messages.len()), crossterm::style::Color::White)?;
-                crate::tui::TUI::print_at(4, 6, &format!("Files: {}", context.working_files.len()), crossterm::style::Color::White)?;
-                crate::tui::TUI::print_at(4, 7, &format!("Changes: {}", context.file_changes.len()), crossterm::style::Color::White)?;
-                
+                crate::tui::TUI::print_at(
+                    2,
+                    3,
+                    "Session Statistics",
+                    crossterm::style::Color::Cyan,
+                )?;
+                crate::tui::TUI::print_at(
+                    4,
+                    5,
+                    &format!("Messages: {}", context.messages.len()),
+                    crossterm::style::Color::White,
+                )?;
+                crate::tui::TUI::print_at(
+                    4,
+                    6,
+                    &format!("Files: {}", context.working_files.len()),
+                    crossterm::style::Color::White,
+                )?;
+                crate::tui::TUI::print_at(
+                    4,
+                    7,
+                    &format!("Changes: {}", context.file_changes.len()),
+                    crossterm::style::Color::White,
+                )?;
+
                 crate::tui::TUI::draw_status_line("Press q to exit")?;
-                
+
                 if event::poll(Duration::from_millis(100))? {
                     if let Event::Key(key) = event::read()? {
                         if key.code == KeyCode::Char('q') {
@@ -483,18 +569,18 @@ Use tools as needed and provide the result.", step.description);
                     }
                 }
             }
-            
+
             crate::tui::TUI::cleanup()?;
         }
-        
+
         "config" => {
             if parts.len() < 2 {
                 println!("Usage: /config <get|set|list>");
                 return Ok(true);
             }
-            
+
             let config_file = std::env::current_dir()?.join(".ocli").join("config.json");
-            
+
             match parts[1] {
                 "list" => {
                     if config_file.exists() {
@@ -511,7 +597,7 @@ Use tools as needed and provide the result.", step.description);
                     }
                     let key = parts[2];
                     let value = parts[3..].join(" ");
-                    
+
                     tokio::fs::create_dir_all(config_file.parent().unwrap()).await?;
                     let mut config = if config_file.exists() {
                         let c = tokio::fs::read_to_string(&config_file).await?;
@@ -519,7 +605,7 @@ Use tools as needed and provide the result.", step.description);
                     } else {
                         serde_json::json!({})
                     };
-                    
+
                     config[key] = serde_json::json!(value);
                     tokio::fs::write(&config_file, serde_json::to_string_pretty(&config)?).await?;
                     println!("✅ Set {} = {}", key, value);
@@ -544,96 +630,105 @@ Use tools as needed and provide the result.", step.description);
                 _ => println!("Unknown config command"),
             }
         }
-        
+
         "version" => {
             println!("🦉 OCLI v0.2.0");
             println!("Claude Code-like interface for Ollama");
         }
-        
+
         "context" => {
             let ctx = owl.get_context().await?;
             println!("{}", ctx);
         }
-        
+
         "export" => {
             let export_file = if parts.len() > 1 {
                 parts[1].to_string()
             } else {
-                format!("conversation_{}.md", chrono::Local::now().format("%Y%m%d_%H%M%S"))
+                format!(
+                    "conversation_{}.md",
+                    chrono::Local::now().format("%Y%m%d_%H%M%S")
+                )
             };
-            
+
             let mut content = String::from("# OCLI Conversation Export\n\n");
-            content.push_str(&format!("Exported: {}\n\n", chrono::Local::now().format("%Y-%m-%d %H:%M:%S")));
+            content.push_str(&format!(
+                "Exported: {}\n\n",
+                chrono::Local::now().format("%Y-%m-%d %H:%M:%S")
+            ));
             content.push_str(&format!("Session: {}\n\n", "default"));
             content.push_str(&format!("Total messages: {}\n\n", context.messages.len()));
-            
+
             tokio::fs::write(&export_file, content).await?;
             println!("✅ Exported to {}", export_file);
         }
-        
+
         "exit" => return Ok(false),
-        
+
         _ => {
-                if let Some(suggestion) = crate::errors::suggest_command(parts[0]) {
-                    println!("❌ Unknown command: /{}", parts[0]);
-                    println!("💡 Did you mean: /{}?", suggestion);
-                } else {
-                    println!("❌ Unknown command: /{}", parts[0]);
-                }
+            if let Some(suggestion) = crate::errors::suggest_command(parts[0]) {
+                println!("❌ Unknown command: /{}", parts[0]);
+                println!("💡 Did you mean: /{}?", suggestion);
+            } else {
+                println!("❌ Unknown command: /{}", parts[0]);
             }
+        }
     }
-    
+
     Ok(true)
 }
 
 async fn init_project_mode(client: &Client, model: &str) -> Result<(), Box<dyn std::error::Error>> {
     println!("🤖 OCLI - Initializing project");
     println!("⏳ Analyzing project structure...");
-    
+
     let current_dir = std::env::current_dir()?;
     println!("📁 Analyzing: {}", current_dir.display());
-    
+
     let project_info = analyze_project(&current_dir).await?;
-    
-    let prompt = format!("Analyze this project:\n\n{}\n\nProvide insights on structure, tech stack, and recommendations.", project_info);
-    
+
+    let prompt = format!(
+        "Analyze this project:\n\n{}\n\nProvide insights on structure, tech stack, and recommendations.",
+        project_info
+    );
+
     send_prompt_and_stream_response(client, model, &prompt).await?;
-    
+
     let ocli_dir = current_dir.join(".ocli");
     tokio::fs::create_dir_all(&ocli_dir).await?;
-    
+
     let context_file = ocli_dir.join("project.json");
     let context_data = serde_json::json!({
         "timestamp": chrono::Utc::now().to_rfc3339(),
         "directory": current_dir.to_string_lossy(),
         "analysis": project_info
     });
-    
+
     tokio::fs::write(context_file, serde_json::to_string_pretty(&context_data)?).await?;
     println!("\n💾 Project context saved to .ocli/project.json");
-    
+
     Ok(())
 }
 
 async fn analyze_project(dir: &Path) -> Result<String, Box<dyn std::error::Error>> {
     let mut analysis = String::new();
-    
+
     let project_type = detect_project_type(dir).await;
     analysis.push_str(&format!("Project Type: {}\n\n", project_type));
-    
+
     analysis.push_str("Key Files:\n");
     let mut entries = tokio::fs::read_dir(dir).await?;
-    
+
     while let Some(entry) = entries.next_entry().await? {
         let path = entry.path();
         let name = path.file_name().unwrap().to_string_lossy();
-        
+
         if is_important_file(&name) {
             let metadata = entry.metadata().await?;
             analysis.push_str(&format!("- {} ({} bytes)\n", name, metadata.len()));
         }
     }
-    
+
     Ok(analysis)
 }
 
@@ -648,20 +743,33 @@ async fn detect_project_type(dir: &Path) -> String {
         "Go"
     } else {
         "Unknown"
-    }.to_string()
+    }
+    .to_string()
 }
 
 fn is_important_file(name: &str) -> bool {
-    matches!(name, 
-        "Cargo.toml" | "package.json" | "requirements.txt" | "pyproject.toml" |
-        "go.mod" | "README.md" | "LICENSE" | ".gitignore" | "Dockerfile"
+    matches!(
+        name,
+        "Cargo.toml"
+            | "package.json"
+            | "requirements.txt"
+            | "pyproject.toml"
+            | "go.mod"
+            | "README.md"
+            | "LICENSE"
+            | ".gitignore"
+            | "Dockerfile"
     )
 }
 
-async fn send_prompt_and_stream_response(client: &Client, model: &str, prompt: &str) -> Result<(), Box<dyn std::error::Error>> {
+async fn send_prompt_and_stream_response(
+    client: &Client,
+    model: &str,
+    prompt: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     print!("AI: ");
     io::stdout().flush()?;
-    
+
     let response = client
         .post("http://localhost:11434/api/generate")
         .json(&serde_json::json!({
@@ -676,14 +784,16 @@ async fn send_prompt_and_stream_response(client: &Client, model: &str, prompt: &
         println!("Error: HTTP {}", response.status());
         return Ok(());
     }
-    
+
     let mut stream = response.bytes_stream();
-    
+
     while let Some(chunk) = stream.next().await {
         let chunk = chunk?;
         if let Ok(text) = std::str::from_utf8(&chunk) {
             for line in text.lines() {
-                if line.trim().is_empty() { continue; }
+                if line.trim().is_empty() {
+                    continue;
+                }
                 if let Ok(json) = serde_json::from_str::<Value>(line) {
                     if let Some(response_text) = json.get("response").and_then(|r| r.as_str()) {
                         print!("{}", response_text);
@@ -697,11 +807,15 @@ async fn send_prompt_and_stream_response(client: &Client, model: &str, prompt: &
             }
         }
     }
-    
+
     Ok(())
 }
 
-async fn get_complete_response(client: &Client, model: &str, prompt: &str) -> Result<String, Box<dyn std::error::Error>> {
+async fn get_complete_response(
+    client: &Client,
+    model: &str,
+    prompt: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
     let response = client
         .post("http://localhost:11434/api/generate")
         .json(&serde_json::json!({
@@ -713,13 +827,21 @@ async fn get_complete_response(client: &Client, model: &str, prompt: &str) -> Re
         .await?;
 
     let json: Value = response.json().await?;
-    Ok(json.get("response").and_then(|r| r.as_str()).unwrap_or("").to_string())
+    Ok(json
+        .get("response")
+        .and_then(|r| r.as_str())
+        .unwrap_or("")
+        .to_string())
 }
 
-async fn plan_mode(client: &Client, model: &str, goal: &str) -> Result<(), Box<dyn std::error::Error>> {
+async fn plan_mode(
+    client: &Client,
+    model: &str,
+    goal: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     println!("🎯 Planning Mode: {}", goal);
     println!("Generating plan...\n");
-    
+
     let prompt = format!(
         "Create a detailed step-by-step plan to accomplish this goal: {}\n\n\
         Provide 5-10 concrete, actionable steps.\n\
@@ -729,28 +851,29 @@ async fn plan_mode(client: &Client, model: &str, goal: &str) -> Result<(), Box<d
         etc.",
         goal
     );
-    
+
     let response = get_complete_response(client, model, &prompt).await?;
-    
+
     let steps: Vec<String> = response
         .lines()
         .filter(|line| line.trim().starts_with(char::is_numeric))
         .map(|line| {
-            line.split_once('.').map(|(_, rest)| rest.trim().to_string())
+            line.split_once('.')
+                .map(|(_, rest)| rest.trim().to_string())
                 .unwrap_or_else(|| line.trim().to_string())
         })
         .collect();
-    
+
     if steps.is_empty() {
         println!("❌ Could not generate plan");
         return Ok(());
     }
-    
+
     let plan = Plan::new(goal.to_string(), steps);
     println!("{}", plan.display());
-    
+
     plan.save("current").await?;
     println!("💾 Plan saved. Use 'ocli chat --session current' to execute it.");
-    
+
     Ok(())
 }

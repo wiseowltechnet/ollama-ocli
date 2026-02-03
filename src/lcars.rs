@@ -46,5 +46,12 @@ pub fn status_bar(left: &str, right: &str) -> String {
     } else {
         1
     };
-    format!("{}{}{}{}{}", ORANGE, left, " ".repeat(padding), PURPLE, right)
+    format!(
+        "{}{}{}{}{}",
+        ORANGE,
+        left,
+        " ".repeat(padding),
+        PURPLE,
+        right
+    )
 }

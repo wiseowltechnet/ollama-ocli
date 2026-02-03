@@ -32,7 +32,7 @@ impl MultiFileEditor {
 
     pub fn show_preview(&self) -> String {
         let mut preview = String::from("📋 Pending Changes:\n\n");
-        
+
         for (path, edit) in &self.pending_edits {
             match edit.operation {
                 EditOperation::Create => preview.push_str(&format!("✨ Create: {}\n", path)),
@@ -40,13 +40,13 @@ impl MultiFileEditor {
                 EditOperation::Delete => preview.push_str(&format!("🗑️  Delete: {}\n", path)),
             }
         }
-        
+
         preview
     }
 
     pub async fn apply_all(&mut self) -> Result<Vec<String>, Box<dyn std::error::Error>> {
         let mut results = Vec::new();
-        
+
         for (path, edit) in self.pending_edits.drain() {
             match edit.operation {
                 EditOperation::Create | EditOperation::Modify => {
@@ -55,7 +55,7 @@ impl MultiFileEditor {
                         let backup = format!("{}.backup", path);
                         tokio::fs::copy(&path, &backup).await?;
                     }
-                    
+
                     tokio::fs::write(&path, &edit.content).await?;
                     results.push(format!("✅ {}", path));
                 }
@@ -66,7 +66,7 @@ impl MultiFileEditor {
                 }
             }
         }
-        
+
         Ok(results)
     }
 

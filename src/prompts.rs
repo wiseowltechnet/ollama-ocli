@@ -64,21 +64,21 @@ USE TOOLS IN EVERY RESPONSE THAT NEEDS THEM."#.to_string()
 
 pub fn get_context_prompt(working_files: &[String], recent_changes: &[String]) -> String {
     let mut prompt = String::new();
-    
+
     if !working_files.is_empty() {
         prompt.push_str("\n\n📁 WORKING FILES:\n");
         for file in working_files {
             prompt.push_str(&format!("  - {}\n", file));
         }
     }
-    
+
     if !recent_changes.is_empty() {
         prompt.push_str("\n📝 RECENT CHANGES:\n");
         for change in recent_changes.iter().take(5) {
             prompt.push_str(&format!("  - {}\n", change));
         }
     }
-    
+
     prompt
 }
 
@@ -107,12 +107,13 @@ You:
 <tool_call>{"tool":"execute_bash","parameters":{"command":"cargo build"}}</tool_call>
 <tool_call>{"tool":"execute_bash","parameters":{"command":"cargo test"}}</tool_call>
 ✅ Authentication added and tested!
-"#.to_string()
+"#
+    .to_string()
 }
 
 pub async fn get_system_prompt_with_mcp() -> Result<String, Box<dyn std::error::Error>> {
     let mut prompt = get_system_prompt();
-    
+
     let mut mcp_client = crate::mcp::MCPClient::new();
     if mcp_client.load_config().await.is_ok() && mcp_client.discover_tools().await.is_ok() {
         let tools = mcp_client.list_available_tools();
@@ -125,6 +126,6 @@ pub async fn get_system_prompt_with_mcp() -> Result<String, Box<dyn std::error::
             prompt.push_str("\nTo use: Call /mcp call <tool_name> <params>\n");
         }
     }
-    
+
     Ok(prompt)
 }

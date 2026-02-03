@@ -50,32 +50,32 @@ impl ConversationContext {
 
     pub fn get_context_summary(&self) -> String {
         let mut summary = String::new();
-        
+
         if !self.working_files.is_empty() {
             summary.push_str("Working files:\n");
             for path in self.working_files.keys() {
                 summary.push_str(&format!("  - {}\n", path));
             }
         }
-        
+
         if !self.file_changes.is_empty() {
             summary.push_str("\nRecent changes:\n");
             for change in self.file_changes.iter().rev().take(5) {
                 summary.push_str(&format!("  - {} {}\n", change.operation, change.path));
             }
         }
-        
+
         summary
     }
 
     pub async fn save(&self, session_name: &str) -> Result<(), Box<dyn std::error::Error>> {
         let context_dir = std::env::current_dir()?.join(".ocli").join("context");
         tokio::fs::create_dir_all(&context_dir).await?;
-        
+
         let context_file = context_dir.join(format!("{}.json", session_name));
         let json = serde_json::to_string_pretty(self)?;
         tokio::fs::write(context_file, json).await?;
-        
+
         Ok(())
     }
 
@@ -84,11 +84,11 @@ impl ConversationContext {
             .join(".ocli")
             .join("context")
             .join(format!("{}.json", session_name));
-        
+
         if !context_file.exists() {
             return Ok(Self::new());
         }
-        
+
         let content = tokio::fs::read_to_string(context_file).await?;
         let context = serde_json::from_str(&content)?;
         Ok(context)

@@ -1,0 +1,4 @@
+[alias]
+qa = "clippy -- -D warnings"
+fmt-check = "fmt -- --check"
+build-release = "build --release"
