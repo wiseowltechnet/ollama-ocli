@@ -2,6 +2,16 @@
 name = "ocli"
 version = "0.3.0"
 edition = "2021"
+authors = ["WiseOwl Tech <contact@wiseowltech.net>"]
+description = "Enterprise-grade AI coding assistant with LCARS styling, command history, and multi-model support"
+license = "MIT"
+repository = "https://github.com/wiseowltechnet/ollama-ocli"
+homepage = "https://github.com/wiseowltechnet/ollama-ocli"
+documentation = "https://github.com/wiseowltechnet/ollama-ocli#readme"
+readme = "README.md"
+keywords = ["ollama", "ai", "cli", "coding-assistant", "lcars"]
+categories = ["command-line-utilities", "development-tools"]
+
 
 [dependencies]
 reqwest = { version = "0.11", features = ["json", "stream"] }
