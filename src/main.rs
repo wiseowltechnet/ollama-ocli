@@ -208,6 +208,7 @@ async fn handle_slash_command(
             println!("{}📊 Monitor{}", PURPLE, RESET);
             println!("  /stats /monitor /git");
             println!("{}ℹ️  Other{}", PURPLE, RESET);
+  /history /alias
             println!("  /help /version /clear /exit");
         }
 
@@ -663,6 +664,85 @@ Use tools as needed and provide the result.",
             println!("✅ Exported to {}", export_file);
         }
 
+        "history" => {
+            let sessions_dir = std::env::current_dir()?.join(".ocli").join("sessions");
+            if sessions_dir.exists() {
+                println!("📜 Conversation History:");
+                let mut entries: Vec<_> = std::fs::read_dir(&sessions_dir)?
+                    .filter_map(|e| e.ok())
+                    .collect();
+                entries.sort_by_key(|e| e.metadata().ok().and_then(|m| m.modified().ok()).unwrap_or(std::time::SystemTime::UNIX_EPOCH));
+                entries.reverse();
+                for (i, entry) in entries.iter().take(10).enumerate() {
+                    if let Ok(name) = entry.file_name().into_string() {
+                        println!("  {}. {}", i + 1, name.replace(".json", ""));
+                    }
+                }
+            } else {
+                println!("No conversation history found");
+            }
+        }
+        
+        "alias" => {
+            if parts.len() < 2 {
+                println!("Usage: /alias <list|set|remove>");
+                return Ok(true);
+            }
+            
+            let config_file = std::env::current_dir()?.join(".ocli").join("aliases.json");
+            
+            match parts[1] {
+                "list" => {
+                    if config_file.exists() {
+                        let content = tokio::fs::read_to_string(&config_file).await?;
+                        let aliases: serde_json::Value = serde_json::from_str(&content)?;
+                        println!("📝 Aliases:");
+                        for (key, value) in aliases.as_object().unwrap_or(&serde_json::Map::new()) {
+                            println!("  {} -> {}", key, value.as_str().unwrap_or(""));
+                        }
+                    } else {
+                        println!("No aliases defined");
+                    }
+                }
+                "set" => {
+                    if parts.len() < 4 {
+                        println!("Usage: /alias set <name> <command>");
+                        return Ok(true);
+                    }
+                    let name = parts[2];
+                    let command = parts[3..].join(" ");
+                    
+                    tokio::fs::create_dir_all(config_file.parent().unwrap()).await?;
+                    let mut aliases = if config_file.exists() {
+                        let c = tokio::fs::read_to_string(&config_file).await?;
+                        serde_json::from_str(&c).unwrap_or(serde_json::json!({}))
+                    } else {
+                        serde_json::json!({})
+                    };
+                    
+                    aliases[name] = serde_json::json!(command);
+                    tokio::fs::write(&config_file, serde_json::to_string_pretty(&aliases)?).await?;
+                    println!("✅ Alias set: {} -> {}", name, command);
+                }
+                "remove" => {
+                    if parts.len() < 3 {
+                        println!("Usage: /alias remove <name>");
+                        return Ok(true);
+                    }
+                    if config_file.exists() {
+                        let c = tokio::fs::read_to_string(&config_file).await?;
+                        let mut aliases: serde_json::Value = serde_json::from_str(&c)?;
+                        if let Some(obj) = aliases.as_object_mut() {
+                            obj.remove(parts[2]);
+                            tokio::fs::write(&config_file, serde_json::to_string_pretty(&aliases)?).await?;
+                            println!("✅ Alias removed: {}", parts[2]);
+                        }
+                    }
+                }
+                _ => println!("Unknown alias command"),
+            }
+        }
+        
         "exit" => return Ok(false),
 
         _ => {

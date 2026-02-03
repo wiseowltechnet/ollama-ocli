@@ -1,8 +1,8 @@
 {
   "working_files": {
+    "test.py": "print(\"Hello from test\")\n",
     "Cargo.toml": "[package]\nname = \"ocli\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\nreqwest = { version = \"0.11\", features = [\"json\", \"stream\"] }\ntokio = { version = \"1.0\", features = [\"full\"] }\nserde = { version = \"1.0\", features = [\"derive\"] }\nserde_json = \"1.0\"\nclap = { version = \"4.0\", features = [\"derive\"] }\nfutures-util = \"0.3\"\ntokio-fs = \"0.1\"\nchrono = { version = \"0.4\", features = [\"serde\"] }\n",
-    "/tmp/ocli_test.txt": "test content\n",
-    "test.py": "print(\"Hello from test\")\n"
+    "/tmp/ocli_test.txt": "test content\n"
   },
   "file_changes": [],
   "messages": []
