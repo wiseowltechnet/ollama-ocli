@@ -11,6 +11,8 @@ pub async fn stream_with_tools(
 ) -> Result<String, Box<dyn std::error::Error>> {
     let mut full_response = String::new();
     let mut buffer = String::new();
+    let start_time = std::time::Instant::now();
+    let mut token_count = 0;
 
     let response = client
         .post("http://localhost:11434/api/generate")
@@ -27,8 +29,11 @@ pub async fn stream_with_tools(
     }
 
     let mut stream = response.bytes_stream();
+    // Print status line
+    println!("╔══════════════════════════════════════════════════════════╗");
+    println!("║ ⏳ Generating response...                                ║");
+    println!("╚══════════════════════════════════════════════════════════╝");
     print!("AI: ");
-    io::stdout().flush()?;
 
     while let Some(chunk) = stream.next().await {
         let chunk = chunk?;
@@ -40,6 +45,15 @@ pub async fn stream_with_tools(
                 if let Ok(json) = serde_json::from_str::<Value>(line) {
                     if let Some(response_text) = json.get("response").and_then(|r| r.as_str()) {
                         buffer.push_str(response_text);
+                        token_count += 1;
+
+                        // Update status line every 10 tokens
+                        if token_count % 10 == 0 {
+                            let elapsed = start_time.elapsed().as_secs_f64();
+                            let tps = token_count as f64 / elapsed;
+                            print!("\x1b[2A\r║ ⏳ {} tokens | {:.1} tok/s | {:.1}s elapsed{:20}║\x1b[2B\r", token_count, tps, elapsed, "");
+                            io::stdout().flush().ok();
+                        }
                         full_response.push_str(response_text);
 
                         // Check for complete tool calls

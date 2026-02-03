@@ -26,6 +26,8 @@ futures-util = "0.3"
 rustyline = "13.0"
 syntect = "5.0"
 indicatif = "0.17"
+ratatui = "0.26"
+sysinfo = "0.30"
 
 [dev-dependencies]
 criterion = "0.5"
@@ -34,3 +36,4 @@ insta = "1.34"
 [[bench]]
 name = "functional_bench"
 harness = false
+

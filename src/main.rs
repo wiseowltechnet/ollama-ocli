@@ -8,6 +8,9 @@ mod suggestions;
 mod diff_viewer;
 mod models;
 mod errors;
+mod dashboard;
+mod lcars_tui;
+mod dashboard_integration;
 mod git;
 mod lcars;
 mod mcp;
@@ -94,6 +97,9 @@ async fn chat_mode(
     let session_name = session.unwrap_or("default");
     let mut context = ConversationContext::load(session_name).await?;
     let mut editor = MultiFileEditor::new();
+    // Dashboard stats
+    let mut stats = crate::dashboard::DashboardStats::new();
+    stats.update_memory();
 
     println!("{}", crate::lcars::header());
     println!(
@@ -146,6 +152,23 @@ async fn chat_mode(
         }
 
         if input.starts_with('/') {
+
+        // Check for F3 dashboard toggle
+        if input == "/dashboard" || input == "/stats" {
+            stats.update_memory();
+            if let Err(e) = crate::dashboard_integration::render_dashboard_frame(
+                &stats, model, session_name, mcp_count
+            ) {
+                println!("❌ Dashboard error: {}", e);
+            }
+            // Redraw header after dashboard
+            println!("{}", crate::lcars::header());
+            println!("{}", crate::lcars::status_bar(
+                &format!("Model: {}", model),
+                &format!("Session: {}", session_name)
+            ));
+            continue;
+        }
             if !handle_slash_command(&owl, client, model, input, &mut context, &mut editor).await? {
                 break;
             }
@@ -153,6 +176,10 @@ async fn chat_mode(
         }
 
         context.add_message("user".to_string(), input.to_string());
+        // Track stats
+        stats.add_activity(format!("User: {}", input.chars().take(30).collect::<String>()));
+        stats.turn_count += 1;
+        let start = std::time::Instant::now();
 
         let system_prompt = format!(
             "{}\n{}",
@@ -165,6 +192,10 @@ async fn chat_mode(
 
         let response = stream_with_tools(client, model, &full_prompt).await?;
         context.add_message("assistant".to_string(), response);
+        // Update stats after response
+        stats.add_response_time(start.elapsed());
+        stats.add_activity("AI: Response complete".to_string());
+        stats.update_memory();
 
         if context.messages.len() % 5 == 0 {
             context.save(session_name).await?;
@@ -216,7 +247,7 @@ async fn handle_slash_command(
             println!("{}📊 Monitor{}", PURPLE, RESET);
             println!("  /stats /monitor /git");
             println!("{}ℹ️  Other{}", PURPLE, RESET);
-            println!("  /history /alias /perf /help /version /clear /exit");
+            println!("  /dashboard /history /alias /perf /help /version /clear /exit");
             println!("  /help /version /clear /exit");
         }
 
