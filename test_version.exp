@@ -1,0 +1,13 @@
+#!/usr/bin/expect -f
+set timeout 10
+log_user 1
+
+spawn ./target/debug/ocli
+
+sleep 1
+send "/version\r"
+
+sleep 1
+send "exit\r"
+
+expect eof

@@ -139,6 +139,7 @@ async fn handle_slash_command(owl: &crate::wiseowl::WiseOwl,
             println!("/done <task> - Mark task complete");
             println!("/rule <rule> - Add project rule");
             println!("/context - Show wiseowl context");
+            println!("/version - Show version");
             println!("/next - Execute next plan step");
             println!("/show-plan - Display current plan");
             println!("📋 Commands:");
@@ -255,6 +256,7 @@ async fn handle_slash_command(owl: &crate::wiseowl::WiseOwl,
             println!("/done <task> - Mark task complete");
             println!("/rule <rule> - Add project rule");
             println!("/context - Show wiseowl context");
+            println!("/version - Show version");
                 return Ok(true);
             }
             let goal = parts[1..].join(" ");
@@ -337,6 +339,11 @@ Use tools as needed and provide the result.", step.description);
             let rule = parts[1..].join(" ");
             owl.add_rule(&rule).await?;
             println!("✅ Added to RULES");
+        }
+        
+        "version" => {
+            println!("🦉 OCLI v0.1.0");
+            println!("Claude Code-like interface for Ollama");
         }
         
         "context" => {

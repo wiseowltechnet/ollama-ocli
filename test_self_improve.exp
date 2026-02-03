@@ -1,0 +1,16 @@
+#!/usr/bin/expect -f
+set timeout 120
+log_user 1
+
+spawn ./target/debug/ocli
+
+sleep 2
+send "Add a /status command that shows if ollama is running. Read src/main.rs first.\r"
+
+sleep 5
+send "/read src/main.rs\r"
+
+sleep 3
+send "exit\r"
+
+expect eof
