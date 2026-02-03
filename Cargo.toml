@@ -1,6 +1,6 @@
 [package]
 name = "ocli"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2021"
 authors = ["WiseOwl Tech <contact@wiseowltech.net>"]
 description = "Enterprise-grade AI coding assistant with LCARS styling, command history, and multi-model support"

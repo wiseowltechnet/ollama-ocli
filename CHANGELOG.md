@@ -1,3 +1,40 @@
+## [0.3.2] - 2026-02-03
+
+### 🎨 LCARS Dashboard & Live Progress
+
+#### New Features
+- **Live Progress Indicator** - Real-time stats while AI generates responses
+  - Token count updates every 10 tokens
+  - Tokens per second calculation
+  - Elapsed time tracking
+  - ANSI escape codes for in-place updates
+  
+- **`/dashboard` Command** - Full-screen LCARS TUI dashboard
+  - Response time graphs (Unicode bar charts)
+  - Memory usage gauge
+  - Activity log (last 10 events with timestamps)
+  - MCP tools status
+  - Session statistics (turns, tokens, uptime)
+  - Press Esc or F3 to exit
+  
+- **Real-time Stats Tracking**
+  - Automatic tracking of all conversation metrics
+  - Response times (last 10)
+  - Memory usage monitoring
+  - Activity logging
+  - Turn and token counting
+
+#### Technical
+- Added `ratatui 0.26` for TUI framework
+- Added `sysinfo 0.30` for system metrics
+- LCARS orange (255,153,0) and blue (153,204,255) color scheme
+- Minimal performance overhead (~0.1ms per update)
+
+#### Impact
+- Real-time visibility into AI performance
+- Better understanding of system resource usage
+- Enhanced user experience with live feedback
+
 ## [0.3.1] - 2026-02-03
 
 ### ⚡ Performance & Developer Experience
