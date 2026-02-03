@@ -1,3 +1,4 @@
+mod mcp;
 mod tui;
 mod lcars;
 mod git;
@@ -392,6 +393,32 @@ Use tools as needed and provide the result.", step.description);
         "stats" => {
             let stats = crate::stats::SessionStats::new();
             println!("{}", stats.display());
+        }
+        
+        "mcp" => {
+            if parts.len() < 2 {
+                println!("Usage: /mcp <list|call>");
+                return Ok(true);
+            }
+            
+            match parts[1] {
+                "list" => {
+                    let mut mcp_client = crate::mcp::MCPClient::new();
+                    mcp_client.load_config().await?;
+                    mcp_client.discover_tools().await?;
+                    
+                    let tools = mcp_client.list_available_tools();
+                    if tools.is_empty() {
+                        println!("No MCP tools available. Add servers to .ocli/mcp_servers.json");
+                    } else {
+                        println!("Available MCP Tools:");
+                        for tool in tools {
+                            println!("  - {} ({}): {}", tool.name, tool.server, tool.description);
+                        }
+                    }
+                }
+                _ => println!("Unknown mcp command"),
+            }
         }
         
         "monitor" => {
