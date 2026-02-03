@@ -1,3 +1,4 @@
 {
-  "model": "deepseek-coder"
+  "model": "deepseek-coder",
+  "test_key": "test_value"
 }

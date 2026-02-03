@@ -31,6 +31,9 @@ struct Args {
     #[arg(short, long, default_value = "deepseek-coder:6.7b")]
     model: String,
     
+    #[arg(short = 'V', long)]
+    version: bool,
+
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -51,6 +54,7 @@ enum Commands {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     let client = Client::new();
+    if args.version { println!("🦉 OCLI v0.2.0"); return Ok(()); }
     
     match args.command {
         Some(Commands::Plan { goal }) => {
