@@ -7,3 +7,4 @@ wiseowl/
 *.md.backup
 test_export.md
 Cargo.lock
+TODO.md
