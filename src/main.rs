@@ -394,6 +394,34 @@ Use tools as needed and provide the result.", step.description);
             println!("{}", stats.display());
         }
         
+        "monitor" => {
+            use crossterm::event::{self, Event, KeyCode};
+            use std::time::Duration;
+            
+            crate::tui::TUI::init()?;
+            crate::tui::TUI::clear()?;
+            
+            loop {
+                crate::tui::TUI::draw_header("OCLI MONITOR")?;
+                crate::tui::TUI::print_at(2, 3, "Session Statistics", crossterm::style::Color::Cyan)?;
+                crate::tui::TUI::print_at(4, 5, &format!("Messages: {}", context.messages.len()), crossterm::style::Color::White)?;
+                crate::tui::TUI::print_at(4, 6, &format!("Files: {}", context.working_files.len()), crossterm::style::Color::White)?;
+                crate::tui::TUI::print_at(4, 7, &format!("Changes: {}", context.file_changes.len()), crossterm::style::Color::White)?;
+                
+                crate::tui::TUI::draw_status_line("Press q to exit")?;
+                
+                if event::poll(Duration::from_millis(100))? {
+                    if let Event::Key(key) = event::read()? {
+                        if key.code == KeyCode::Char('q') {
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            crate::tui::TUI::cleanup()?;
+        }
+        
         "version" => {
             println!("🦉 OCLI v0.1.0");
             println!("Claude Code-like interface for Ollama");

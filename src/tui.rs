@@ -79,8 +79,8 @@ impl TUI {
     pub fn draw_status_line(text: &str) -> Result<(), Box<dyn std::error::Error>> {
         let (width, height) = Self::get_size()?;
         
-        Self::print_at(0, height - 1, &" ".repeat(width as usize), Color::Reset)?;
-        Self::print_at(0, height - 1, text, Color::Green)?;
+        Self::print_at(0, height.saturating_sub(1), &" ".repeat(width as usize), Color::Reset)?;
+        Self::print_at(0, height.saturating_sub(1), text, Color::Green)?;
         
         Ok(())
     }

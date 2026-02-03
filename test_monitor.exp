@@ -1,0 +1,16 @@
+#!/usr/bin/expect -f
+set timeout 10
+log_user 1
+
+spawn ./target/debug/ocli
+
+expect "▶"
+send "/monitor\r"
+
+sleep 2
+send "q"
+
+expect "▶"
+send "exit\r"
+
+expect eof
