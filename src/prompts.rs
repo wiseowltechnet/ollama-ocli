@@ -109,3 +109,22 @@ You:
 ✅ Authentication added and tested!
 "#.to_string()
 }
+
+pub async fn get_system_prompt_with_mcp() -> Result<String, Box<dyn std::error::Error>> {
+    let mut prompt = get_system_prompt();
+    
+    let mut mcp_client = crate::mcp::MCPClient::new();
+    if mcp_client.load_config().await.is_ok() && mcp_client.discover_tools().await.is_ok() {
+        let tools = mcp_client.list_available_tools();
+        if !tools.is_empty() {
+            prompt.push_str("\n\n## MCP Tools Available\n");
+            prompt.push_str("You have access to these additional tools via MCP:\n");
+            for tool in tools {
+                prompt.push_str(&format!("- {}: {}\n", tool.name, tool.description));
+            }
+            prompt.push_str("\nTo use: Call /mcp call <tool_name> <params>\n");
+        }
+    }
+    
+    Ok(prompt)
+}
