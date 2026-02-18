@@ -1,3 +1,7 @@
+> **⚠️ DEPRECATED** — This project has been superseded by [wiseowl-cli](https://github.com/macbeth76/wiseowl-cli) (Java 21 + Micronaut). All features have been consolidated into the new project. This repository is archived and will no longer receive updates.
+
+---
+
 # 🦉 OCLI - Ollama Command Line Interface
 
 
@@ -50,6 +54,8 @@ A Claude Code-like AI coding assistant with self-improvement capabilities, LCARS
 - Alternate buffer support
 
 ### 🔌 MCP (Model Context Protocol) Support
+**See [MCP Architecture Documentation](docs/MCP_ARCHITECTURE.md) for detailed deployment options.**
+
 - Load external MCP servers for extended functionality
 - `/mcp list` - Show available MCP tools
 - `/mcp call <tool> [params]` - Invoke MCP tools
